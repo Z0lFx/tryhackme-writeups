@@ -1,0 +1,262 @@
+**TryHackMe: Year of the Rabbit — CTF Write-up
+1. Introduction
+
+This write-up documents the steps I followed to complete the Year of the Rabbit room on TryHackMe. The challenge involved service enumeration, web reconnaissance, hidden resource discovery, FTP credential recovery, SSH access, and Linux privilege escalation.
+
+The objective was to identify the exposed services, investigate the clues hidden throughout the target, gain initial access, and retrieve both the user and root flags.
+
+2. Initial Enumeration
+
+I started by scanning the target machine with Nmap to identify open ports and determine which services were running.
+
+nmap -sV 10.49.180.139
+
+
+The scan revealed three important services:
+
+Port	Service	Purpose
+21	FTP	File transfer and potential credential discovery
+22	SSH	Remote shell access
+80	HTTP	Web application enumeration
+
+These results provided three possible attack surfaces to investigate.
+
+3. Web Enumeration
+3.1 Inspecting the website
+
+I first attempted to access the FTP service anonymously, but the login failed. I then moved on to the web server by opening the following URL in my browser:
+
+http://10.49.180.139
+
+
+The website displayed the default Apache2 landing page. Although this did not reveal anything immediately useful, it indicated that a web server was running and warranted further enumeration.
+
+3.2 Directory enumeration with Gobuster
+
+To discover hidden directories and files, I used Gobuster with a directory wordlist and extension checks.
+
+gobuster dir \
+  -u http://10.49.180.139 \
+  -w /usr/share/wordlists/dirb/big.txt \
+  -x php,txt,html
+
+
+This scan helped identify the /assets directory, which contained resources worth inspecting.
+
+Note: The -x option expects file extensions, such as php,txt,html, rather than a path to an extensions wordlist.
+
+3.3 Investigating the /assets directory
+
+I explored the discovered directory:
+
+http://10.49.180.139/assets/
+
+
+Inside, I found two files:
+
+RickRolled.mp4
+style.css
+
+The MP4 file turned out to be a Rickroll and did not provide a direct solution. However, the CSS file was more interesting because stylesheets can contain comments, references, or links to resources that are not immediately visible on the main webpage.
+
+I inspected style.css and discovered a reference to a suspicious PHP file:
+
+/sup3r_s3cr3t_fl4g.php
+
+
+This discovery suggested that the web server contained additional content that was not linked directly from the homepage.
+
+4. Investigating the Hidden PHP File
+4.1 Accessing the PHP resource
+
+I opened the discovered file in my browser:
+
+http://10.49.180.139/sup3r_s3cr3t_fl4g.php
+
+
+Instead of revealing a flag, the page displayed a message instructing me to disable JavaScript in the browser.
+
+Initially, I left JavaScript enabled. The page redirected or displayed another Rickroll, which did not provide any useful information.
+
+4.2 Disabling JavaScript
+
+I disabled JavaScript in my browser and revisited the PHP page.
+
+The content changed, but the page still did not reveal the expected flag. This suggested that the visible webpage was not the only source of information and that additional clues might be present in the HTTP requests.
+
+Rather than repeatedly interacting with the page, I decided to inspect the network traffic.
+
+4.3 Intercepting requests with Burp Suite
+
+I opened Burp Suite, configured my browser to use the proxy, and enabled request interception.
+
+I then accessed the hidden PHP file again:
+
+http://10.49.180.139/sup3r_s3cr3t_fl4g.php
+
+
+After forwarding the intercepted request, I examined the subsequent HTTP traffic. Burp Suite revealed an additional request that referenced a hidden directory.
+
+The discovered path was:
+
+/WExYY2Cv-qU
+
+
+This was an important lead because it demonstrated that examining HTTP requests could reveal resources that were not obvious from the rendered webpage.
+
+At this stage, I had identified several useful paths for further investigation:
+
+/assets
+/sup3r_s3cr3t_fl4g.php
+/WExYY2Cv-qU
+
+These findings provided the starting point for the next stage: investigating the hidden resources and obtaining credentials through the FTP service.
+
+5. FTP Credential Discovery
+
+After discovering the hidden web resources, I returned to the FTP service identified during the initial scan.
+
+I used Hydra with a password list to test credentials for the known FTP username, ftpuser.
+
+hydra -l ftpuser -P password.txt ftp://10.49.180.139
+
+
+Hydra identified valid credentials:
+
+Username: ftpuser
+Password: 5iez1wGXKfPKQ
+
+
+I used these credentials to connect to the FTP server:
+
+ftp 10.49.180.139
+
+
+After logging in, I listed the available files:
+
+ftp> ls
+-rw-r--r-- 1 0 0 758 Jan 23 2020 Eli's_Creds.txt
+
+
+The file Eli's_Creds.txt looked promising, so I downloaded it:
+
+ftp> get Eli's_Creds.txt
+
+5.1 Decoding the credentials
+
+I examined the downloaded file:
+
+cat 'Eli'\''s_Creds.txt'
+
+
+The contents appeared to be encoded using Brainfuck, an esoteric programming language that represents instructions through a small set of symbols.
+
+I decoded the file using a Brainfuck decoder and recovered the following credentials:
+
+Username: eli
+Password: DSpDiM1wAEwid
+
+
+These credentials provided the next step toward gaining shell access to the target.
+
+6. SSH Access and Further Enumeration
+
+Using the recovered credentials, I connected to the machine through SSH:
+
+ssh eli@10.49.180.139
+
+
+Once logged in, I began investigating the filesystem and checking for clues related to other users.
+
+I searched for paths containing s3cr3t:
+
+locate s3cr3t
+
+
+The results included:
+
+/usr/games/s3cr3t
+/usr/games/s3cr3t/.th1s_m3ss4ag3_15_f0r_gw3nd0l1n3_0nly!
+/var/www/html/sup3r_s3cr3t_fl4g.php
+
+
+I inspected the hidden file inside /usr/games/s3cr3t:
+
+cd /usr/games/s3cr3t
+ls -la
+cat .th1s_m3ss4ag3_15_f0r_gw3nd0l1n3_0nly!
+
+
+The message revealed a password clue for the user gwendoline:
+
+Your password is awful, Gwendoline.
+It should be at least 60 characters long! Not just MniVCQVhQHUNI
+Honestly!
+
+Yours sincerely
+   -Root
+
+
+The message provided a possible password to investigate during the next stage.
+
+7. Retrieving the User Flag
+
+I attempted to read the user flag:
+
+cat /home/gwendoline/user.txt
+
+
+However, access was denied because the file was restricted to its owner and group.
+
+The next step was to investigate the account's permissions and the system's privilege configuration to determine whether the file could be accessed through an authorized route.
+
+The recovered user flag was:
+
+THM{1107174691af9ff3681d2b5bdb5740b1589bae53}
+
+8. Privilege Escalation
+
+I checked the current user's sudo permissions:
+
+sudo -l
+
+
+The relevant permission allowed /usr/bin/vi to be executed against /home/gwendoline/user.txt with elevated privileges.
+
+Vim can execute shell commands, so allowing an untrusted user to launch it with elevated privileges may create a privilege-escalation vulnerability.
+
+My notes recorded the following command:
+
+sudo -u#-1 /usr/bin/vi /home/gwendoline/user.txt
+
+
+On vulnerable sudo versions, the special UID value -1 may be interpreted as UID 0. However, this depends on the sudo version and configuration, and the exact sudo -l output is needed to confirm the conditions.
+
+After obtaining root access, I retrieved the root flag.
+
+THM{8d6f163a87a1c80de27a4fd61aef0f3a0ecf9161}
+
+9. Lessons Learned
+
+This room demonstrated several useful penetration-testing techniques:
+
+Service enumeration: Nmap identifies exposed services and helps prioritize further investigation.
+Directory discovery: Gobuster can reveal hidden web resources that are not linked from the homepage.
+HTTP traffic analysis: Burp Suite can expose additional requests and paths that are not obvious from the rendered page.
+Credential discovery: Files exposed through FTP may contain credentials for other services.
+Encoding analysis: Recognizing Brainfuck made it possible to decode the contents of the downloaded file.
+Linux permissions: Understanding file ownership and permissions helps explain why some files cannot be read directly.
+Privilege escalation: Overly permissive sudo rules can allow unintended command execution with elevated privileges.
+10. Conclusion
+
+The Year of the Rabbit room required a methodical approach, beginning with network enumeration and progressing through web investigation, FTP credential recovery, SSH access, and Linux privilege escalation.
+
+The most useful lesson was to investigate unusual resources rather than relying only on what was visible in the browser. The hidden PHP file, additional HTTP request, and Brainfuck-encoded FTP file each provided clues that advanced the investigation.
+
+The challenge also highlighted the importance of secure password practices, careful management of exposed files, and restrictive sudo configurations.
+
+Flags obtained
+
+User flag: THM{1107174691af9ff3681d2b5bdb5740b1589bae53}
+Root flag: THM{8d6f163a87a1c80de27a4fd61aef0f3a0ecf9161}
+**
