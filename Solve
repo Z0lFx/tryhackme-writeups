@@ -212,7 +212,7 @@ The next step was to investigate the account's permissions and the system's priv
 
 The recovered user flag was:
 
-THM{1107174691af9ff3681d2b5bdb5740b1589bae53}
+THM{..}
 
 8. Privilege Escalation
 
@@ -234,7 +234,7 @@ On vulnerable sudo versions, the special UID value -1 may be interpreted as UID 
 
 After obtaining root access, I retrieved the root flag.
 
-THM{8d6f163a87a1c80de27a4fd61aef0f3a0ecf9161}
+THM{..}
 
 9. Lessons Learned
 
@@ -257,6 +257,5 @@ The challenge also highlighted the importance of secure password practices, care
 
 Flags obtained
 
-User flag: THM{1107174691af9ff3681d2b5bdb5740b1589bae53}
-Root flag: THM{8d6f163a87a1c80de27a4fd61aef0f3a0ecf9161}
+
 **
